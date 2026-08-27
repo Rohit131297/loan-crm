@@ -1,10 +1,9 @@
-# Loan CRM v4.0 – OTP + Central Database
+# Loan CRM v4.0
 
-This version adds a real server-side central database and OTP authentication API to the CRM.
+Loan CRM with a server-side central database, leads, dashboard, disbursement and connector payout/payment tracking.
 
 ## What is included
-- Mobile-number OTP login
-- OTP verification
+- Username + password login
 - JWT session
 - Central SQLite database on the server
 - Leads shared across browsers/devices
@@ -17,10 +16,18 @@ This version adds a real server-side central database and OTP authentication API
 - Payment records and pending/paid status
 - Payment receipt generation remains in the browser
 
-## Important
-`OTP_MODE=console` is for testing: the OTP is printed in the server console. It does NOT send SMS.
+## Login
+Mobile OTP login has been removed.
 
-For real SMS OTP, use a compliant SMS provider such as Twilio and set `OTP_MODE=twilio` plus the credentials in `.env`.
+Set these environment variables before deployment:
+
+```env
+JWT_SECRET=use-a-long-random-secret
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=use-a-strong-password
+```
+
+If `ADMIN_USERNAME` and `ADMIN_PASSWORD` are not set, the development defaults are `admin` / `admin123`. Change them for production.
 
 ## Run
 1. Install Node.js 20+.
