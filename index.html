@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loan CRM v4</title>
+<style>
+body{font-family:Arial;margin:0;background:#f4f6f9;color:#1f2937}header{background:#17365d;color:#fff;padding:18px;font-size:22px;font-weight:700}main{max-width:1200px;margin:auto;padding:20px}.box{background:#fff;padding:18px;border-radius:10px;margin-bottom:15px;box-shadow:0 2px 8px #0001}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}input,select,textarea,button{box-sizing:border-box;padding:10px;width:100%;margin-top:5px}button{background:#17365d;color:#fff;border:0;border-radius:6px;cursor:pointer}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.card{background:#fff;padding:16px;border-radius:10px;cursor:pointer}.card b{font-size:25px;display:block;margin-top:7px}table{width:100%;border-collapse:collapse;background:#fff}td,th{padding:9px;border-bottom:1px solid #eee;text-align:left;font-size:13px}.hidden{display:none}.link{color:#17365d;text-decoration:underline;cursor:pointer}.error{color:#b91c1c}
+</style></head><body>
+<header>Rohit Mohite – Loan CRM v4.0</header>
+<main>
+<div id="login" class="box"><h2>CRM OTP Login</h2><label>Mobile Number</label><input id="mobile" value="7972048818" inputmode="numeric"><button onclick="requestOtp()">Send OTP</button><div id="otpBox" class="hidden"><label>OTP</label><input id="otp" inputmode="numeric"><button onclick="verifyOtp()">Verify OTP</button></div><p id="msg"></p></div>
+
+<div id="app" class="hidden">
+<div class="box"><button onclick="logout()">Logout</button></div>
+<div class="cards">
+<div class="card" onclick="loadLeads('')">Total Leads<b id="total">0</b></div>
+<div class="card" onclick="loadLeads('Login')">Login<b id="loginCount">0</b></div>
+<div class="card" onclick="loadLeads('Sanction')">Sanction<b id="sanctionCount">0</b></div>
+<div class="card" onclick="loadLeads('Disbursed')">Disbursed<b id="disbCount">0</b></div>
+<div class="card"><span>Total Disbursement</span><b id="disbAmt">₹0</b></div>
+<div class="card"><span>Total Payout</span><b id="payout">₹0</b></div>
+<div class="card"><span>Pending Payments</span><b id="pending">0</b></div>
+</div>
+
+<div class="box"><h2>Lead Create / Update</h2><input type="hidden" id="id"><div class="grid">
+<label>Customer Name<input id="customer"></label><label>Mobile<input id="lmob"></label><label>Email<input id="email"></label><label>Banker<input id="banker"></label>
+<label>Connector<input id="connector"></label><label>Bank<input id="bank"></label><label>Application Number<input id="appno"></label><label>Loan Account Number<input id="loan_account"></label>
+<label>Status<select id="status"><option>New</option><option>Login</option><option>Sanction</option><option>Disbursed</option><option>Rejected</option></select></label>
+<label>Loan Amount<input id="loan_amount" type="number"></label><label>Sanction Amount<input id="sanction_amount" type="number"></label><label>Actual Disbursement Amount<input id="disb" type="number"></label>
+<label>Next Follow-up<input id="follow_date" type="date"></label><label style="grid-column:1/-1">Remark<textarea id="remark"></textarea></label>
+</div><button onclick="saveLead()">Save / Update Lead</button></div>
+
+<div class="box"><h2>Leads</h2><div class="grid"><input id="q" placeholder="Search name/mobile/application" oninput="loadLeads()"><select id="fs" onchange="loadLeads()"><option value="">All Status</option><option>New</option><option>Login</option><option>Sanction</option><option>Disbursed</option><option>Rejected</option></select><input id="fc" placeholder="Connector" oninput="loadLeads()"></div>
+<table><thead><tr><th>Name</th><th>Mobile</th><th>Application</th><th>Loan A/c</th><th>Status</th><th>Loan Amt</th><th>Disbursed</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table></div>
+
+<div class="box"><h2>Payout & Connector Payment</h2><div class="grid">
+<label>Disbursed Lead<select id="plead" onchange="fillPay()"></select></label><label>Connector<input id="pconnector" readonly></label><label>Disbursement<input id="pamount" readonly></label>
+<label>Payout %<input id="ppercent" type="number" oninput="calc()"></label><label>Net Payout<input id="pnet" readonly></label><label>Payment Date<input id="pdate" type="date"></label>
+<label>Mode<select id="pmode"><option>Bank Transfer</option><option>UPI</option><option>Cash</option></select></label><label>UTR<input id="putr"></label><label>Status<select id="pstatus"><option>Pending</option><option>Paid</option></select></label>
+</div><button onclick="savePayment()">Save Payout & Payment</button><div id="payments"></div></div>
+</div></main>
+<script>
+const API="/api";let token=localStorage.getItem("crm_token")||"";
+const $=x=>document.getElementById(x),money=x=>"₹"+Number(x||0).toLocaleString("en-IN",{maximumFractionDigits:2});
+async function api(path,opt={}){opt.headers={...(opt.headers||{}),Authorization:"Bearer "+token,"Content-Type":"application/json"};let r=await fetch(API+path,opt);let d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function requestOtp(){try{let d=await fetch(API+"/auth/request-otp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mobile:$("mobile").value})}).then(r=>r.json());$("msg").textContent=d.message||d.error;$("otpBox").classList.remove("hidden")}catch(e){$("msg").textContent=e.message}}
+async function verifyOtp(){try{let d=await fetch(API+"/auth/verify-otp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mobile:$("mobile").value,otp:$("otp").value})}).then(r=>r.json());if(!d.token)throw Error(d.error||"OTP failed");token=d.token;localStorage.setItem("crm_token",token);$("login").classList.add("hidden");$("app").classList.remove("hidden");refresh()}catch(e){$("msg").textContent=e.message}}
+function logout(){localStorage.removeItem("crm_token");location.reload()}
+async function refresh(){let d=await api("/dashboard");$("total").textContent=d.total;$("loginCount").textContent=d.counts.Login;$("sanctionCount").textContent=d.counts.Sanction;$("disbCount").textContent=d.counts.Disbursed;$("disbAmt").textContent=money(d.disbursement);$("payout").textContent=money(d.payout);$("pending").textContent=d.pending;loadLeads()}
+async function loadLeads(status){let p=new URLSearchParams();let s=status!==undefined?status:$("fs").value;if(s)p.set("status",s);if($("q").value)p.set("q",$("q").value);if($("fc").value)p.set("connector",$("fc").value);let a=await api("/leads?"+p);$("rows").innerHTML=a.map(x=>`<tr><td class="link" onclick='edit(${JSON.stringify(x)})'>${safe(x.customer)}</td><td class="link" onclick='edit(${JSON.stringify(x)})'>${safe(x.mobile)}</td><td class="link" onclick='edit(${JSON.stringify(x)})'>${safe(x.appno)}</td><td>${safe(x.loan_account)}</td><td>${safe(x.status)}</td><td>${money(x.loan_amount)}</td><td>${money(x.disb)}</td><td><button onclick="edit(${JSON.stringify(x)})">Open</button><button onclick="changeStatus('${x.id}')">Update Status</button></td></tr>`).join("")||"<tr><td colspan=8>No leads</td></tr>";let ds=await api("/leads?status=Disbursed");$("plead").innerHTML='<option value="">Select</option>'+ds.map(x=>`<option value="${x.id}">${safe(x.customer)} - ${safe(x.appno)}</option>`).join("")}
+function edit(x){["id","customer","email","banker","connector","bank","appno","loan_account","status","loan_amount","sanction_amount","disb","follow_date","remark"].forEach(k=>$(k).value=x[k]??"");$("lmob").value=x.mobile||"";scrollTo(0,document.body.scrollHeight)}
+async function saveLead(){let b={id:$("id").value||undefined,customer:$("customer").value,mobile:$("lmob").value,email:$("email").value,banker:$("banker").value,connector:$("connector").value,bank:$("bank").value,appno:$("appno").value,loan_account:$("loan_account").value,status:$("status").value,loan_amount:Number($("loan_amount").value||0),sanction_amount:Number($("sanction_amount").value||0),disb:Number($("disb").value||0),follow_date:$("follow_date").value,remark:$("remark").value};let method=b.id?"PUT":"POST",path=b.id?"/leads/"+b.id:"/leads";await api(path,{method,body:JSON.stringify(b)});alert(b.id?"Lead updated":"Lead created");document.querySelectorAll("input,textarea").forEach(x=>{if(x.id!=="mobile"&&x.id!=="q"&&x.id!=="fc")x.value=""});refresh()}
+async function changeStatus(id){let s=prompt("New status: New, Login, Sanction, Disbursed or Rejected");if(!s)return;let v=["New","Login","Sanction","Disbursed","Rejected"].find(x=>x.toLowerCase()===s.toLowerCase());if(!v)return alert("Invalid status");await api("/leads/"+id+"/status",{method:"PATCH",body:JSON.stringify({status:v})});refresh()}
+function fillPay(){let id=$("plead").value;if(!id)return;api("/leads?status=Disbursed").then(a=>{let x=a.find(x=>x.id===id);$("pconnector").value=x.connector;$("pamount").value=x.disb;calc()})}
+function calc(){$("pnet").value=(Number($("pamount").value||0)*Number($("ppercent").value||0)/100).toFixed(2)}
+async function savePayment(){if(!$("plead").value)return alert("Select a lead");await api("/payments",{method:"POST",body:JSON.stringify({lead_id:$("plead").value,connector:$("pconnector").value,payout_percent:Number($("ppercent").value||0),payment_date:$("pdate").value,payment_mode:$("pmode").value,utr:$("putr").value,payment_status:$("pstatus").value})});alert("Payment saved");refresh()}
+function safe(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+if(token){$("login").classList.add("hidden");$("app").classList.remove("hidden");refresh().catch(()=>logout())}
+</script></body></html>
