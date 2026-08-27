@@ -5,9 +5,11 @@ import crypto from "crypto";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const JWT_SECRET = process.env.JWT_SECRET || "CHANGE_ME";
+const JWT_SECRET = process.env.JWT_SECRET;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!JWT_SECRET || JWT_SECRET.length < 32) throw new Error("JWT_SECRET must be set and at least 32 characters long");
+if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 10) throw new Error("ADMIN_PASSWORD must be set and at least 10 characters long");
 
 app.use(express.json({limit:"1mb"}));
 app.use(express.static("public"));
@@ -40,8 +42,8 @@ function auth(req,res,next){try{const h=req.headers.authorization||"";const toke
 function adminOnly(req,res,next){if(req.user.role!=="admin")return res.status(403).json({error:"Admin access required"});next()}
 app.get("/api/me",auth,(req,res)=>res.json({username:req.user.username,role:req.user.role}));
 app.get("/api/users",auth,adminOnly,(req,res)=>res.json(db.prepare("SELECT id,username,role,created_at FROM users ORDER BY id DESC").all()));
-app.post("/api/users",auth,adminOnly,(req,res)=>{const username=String(req.body.username||"").trim();const password=String(req.body.password||"");const role=req.body.role==="admin"?"admin":"sales";if(!username||!password)return res.status(400).json({error:"Username and password are required"});try{const r=db.prepare("INSERT INTO users(username,password_hash,role) VALUES(?,?,?)").run(username,hash(password),role);res.json(db.prepare("SELECT id,username,role,created_at FROM users WHERE id=?").get(r.lastInsertRowid))}catch{res.status(400).json({error:"Username already exists"})}});
-app.patch("/api/users/:id/password",auth,(req,res)=>{const id=Number(req.params.id);if(req.user.role!=="admin"&&req.user.id!==id)return res.status(403).json({error:"Not allowed"});const password=String(req.body.password||"");if(!password)return res.status(400).json({error:"Password is required"});const r=db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash(password),id);if(!r.changes)return res.status(404).json({error:"User not found"});res.json({ok:true})});
+app.post("/api/users",auth,adminOnly,(req,res)=>{const username=String(req.body.username||"").trim();const password=String(req.body.password||"");const role=req.body.role==="admin"?"admin":"sales";if(!username||password.length<10)return res.status(400).json({error:"Username and password (minimum 10 characters) are required"});try{const r=db.prepare("INSERT INTO users(username,password_hash,role) VALUES(?,?,?)").run(username,hash(password),role);res.json(db.prepare("SELECT id,username,role,created_at FROM users WHERE id=?").get(r.lastInsertRowid))}catch{res.status(400).json({error:"Username already exists"})}});
+app.patch("/api/users/:id/password",auth,(req,res)=>{const id=Number(req.params.id);if(req.user.role!=="admin"&&req.user.id!==id)return res.status(403).json({error:"Not allowed"});const password=String(req.body.password||"");if(password.length<10)return res.status(400).json({error:"Password must be at least 10 characters"});const r=db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash(password),id);if(!r.changes)return res.status(404).json({error:"User not found"});res.json({ok:true})});
 app.delete("/api/users/:id",auth,adminOnly,(req,res)=>{const id=Number(req.params.id);if(id===req.user.id)return res.status(400).json({error:"You cannot delete yourself"});const r=db.prepare("DELETE FROM users WHERE id=?").run(id);if(!r.changes)return res.status(404).json({error:"User not found"});res.json({ok:true})});
 function leadScope(req){return req.user.role==="admin"?"":` AND assigned_to=${JSON.stringify(req.user.username)}`}
 app.get("/api/dashboard",auth,(req,res)=>{const scope=leadScope(req),counts={};for(const s of allowedStatuses)counts[s]=db.prepare(`SELECT COUNT(*) c FROM leads WHERE status=?${scope}`).get(s).c;const disb=db.prepare(`SELECT COALESCE(SUM(disb),0) n FROM leads WHERE 1=1${scope}`).get().n;const payout=db.prepare("SELECT COALESCE(SUM(p.net_payout),0) n FROM payments p LEFT JOIN leads l ON l.id=p.lead_id WHERE 1=1"+(req.user.role==="admin"?"":` AND l.assigned_to=${JSON.stringify(req.user.username)}`)).get().n;const pending=db.prepare("SELECT COUNT(*) c FROM payments p LEFT JOIN leads l ON l.id=p.lead_id WHERE p.payment_status!='Paid'"+(req.user.role==="admin"?"":` AND l.assigned_to=${JSON.stringify(req.user.username)}`)).get().c;res.json({total:db.prepare(`SELECT COUNT(*) c FROM leads WHERE 1=1${scope}`).get().c,counts,disbursement:disb,payout,pending})});
