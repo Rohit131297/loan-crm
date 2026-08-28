@@ -84,7 +84,9 @@ function auth(req,res,next){
   try {
     const h=req.headers.authorization||"";
     const token=h.startsWith("Bearer ")?h.slice(7):"";
-    req.user=jwt.verify(token,JWT_SECRET); next();
+    const user=jwt.verify(token,JWT_SECRET);
+    if (user.username !== ADMIN_USERNAME) throw new Error("Invalid session");
+    req.user=user; next();
   } catch { res.status(401).json({error:"Login required"}); }
 }
 
