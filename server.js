@@ -7,7 +7,8 @@ import fs from "fs";
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || "CHANGE_ME";
-const OTP_MODE = process.env.OTP_MODE || "console";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
 app.use(express.json({limit:"1mb"}));
 app.use(express.static("public"));
@@ -64,54 +65,18 @@ CREATE TABLE IF NOT EXISTS payments (
 `);
 
 const allowedStatuses = ["New","Login","Sanction","Disbursed","Rejected"];
-const hash = s => crypto.createHash("sha256").update(s).digest("hex");
-const now = () => new Date().toISOString();
-
-async function sendOtp(mobile, otp) {
-  if (OTP_MODE === "twilio") {
-    const sid = process.env.TWILIO_ACCOUNT_SID;
-    const token = process.env.TWILIO_AUTH_TOKEN;
-    const from = process.env.TWILIO_PHONE_NUMBER;
-    if (!sid || !token || !from) throw new Error("Twilio credentials are not configured");
-    const body = new URLSearchParams({To: mobile, From: from, Body: `Your Loan CRM OTP is ${otp}. It expires in 5 minutes.`});
-    const auth = Buffer.from(`${sid}:${token}`).toString("base64");
-    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method:"POST",
-      headers:{"Authorization":`Basic ${auth}`,"Content-Type":"application/x-www-form-urlencoded"},
-      body
-    });
-    if (!r.ok) throw new Error("SMS provider rejected the request");
-  } else {
-    console.log(`LOAN CRM OTP for ${mobile}: ${otp}`);
-  }
+function safeEqual(value, expected) {
+  const valueBuffer = Buffer.from(value);
+  const expectedBuffer = Buffer.from(expected);
+  return valueBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(valueBuffer, expectedBuffer);
 }
 
-app.post("/api/auth/request-otp", async (req,res)=>{
-  const mobile = String(req.body.mobile || "").replace(/\D/g,"");
-  if (mobile !== "7972048818") return res.status(403).json({error:"This CRM login number is not authorized."});
-  const otp = String(Math.floor(100000 + Math.random()*900000));
-  db.prepare("INSERT OR IGNORE INTO users(mobile) VALUES(?)").run(mobile);
-  db.prepare("UPDATE otps SET used=1 WHERE mobile=? AND used=0").run(mobile);
-  db.prepare("INSERT INTO otps(mobile,otp_hash,expires_at) VALUES(?,?,?)")
-    .run(mobile,hash(otp),Date.now()+5*60*1000);
-  try {
-    await sendOtp(mobile,otp);
-    res.json({ok:true,message:OTP_MODE==="console"?"OTP generated; check server console.":"OTP sent."});
-  } catch(e) {
-    res.status(500).json({error:e.message});
-  }
-});
-
-app.post("/api/auth/verify-otp",(req,res)=>{
-  const mobile=String(req.body.mobile||"").replace(/\D/g,"");
-  const otp=String(req.body.otp||"").trim();
-  const row=db.prepare("SELECT * FROM otps WHERE mobile=? AND used=0 ORDER BY id DESC LIMIT 1").get(mobile);
-  if(!row || Date.now()>row.expires_at || row.attempts>=5 || hash(otp)!==row.otp_hash) {
-    if(row) db.prepare("UPDATE otps SET attempts=attempts+1 WHERE id=?").run(row.id);
-    return res.status(401).json({error:"Invalid or expired OTP"});
-  }
-  db.prepare("UPDATE otps SET used=1 WHERE id=?").run(row.id);
-  const token=jwt.sign({mobile},JWT_SECRET,{expiresIn:"12h"});
+app.post("/api/auth/login", (req,res) => {
+  const username = String(req.body.username || "").trim();
+  const password = String(req.body.password || "");
+  if (!ADMIN_USERNAME || !ADMIN_PASSWORD) return res.status(500).json({error:"Login is not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD in Render."});
+  if (!safeEqual(username, ADMIN_USERNAME) || !safeEqual(password, ADMIN_PASSWORD)) return res.status(401).json({error:"Invalid user ID or password"});
+  const token = jwt.sign({username}, JWT_SECRET, {expiresIn:"12h"});
   res.json({ok:true,token});
 });
 
@@ -123,7 +88,7 @@ function auth(req,res,next){
   } catch { res.status(401).json({error:"Login required"}); }
 }
 
-app.get("/api/me",auth,(req,res)=>res.json({mobile:req.user.mobile}));
+app.get("/api/me",auth,(req,res)=>res.json({username:req.user.username}));
 
 app.get("/api/dashboard",auth,(req,res)=>{
   const counts={};
