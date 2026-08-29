@@ -37,9 +37,20 @@
 </main></div>
 <script>
 const API="/api";let token=localStorage.getItem("crm_token")||"";const $=x=>document.getElementById(x),money=x=>"₹"+Number(x||0).toLocaleString("en-IN",{maximumFractionDigits:2});
-async function api(path,opt={}){opt.headers={...(opt.headers||{}),Authorization:"Bearer "+token,"Content-Type":"application/json"};let r=await fetch(API+path,opt);let d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function api(path,opt={}){
+  opt.headers={...(opt.headers||{}),Authorization:"Bearer "+token,"Content-Type":"application/json"};
+  let r=await fetch(API+path,opt);
+  let d={}; try{d=await r.json()}catch{}
+  if(!r.ok){let e=Error(d.error||"Request failed");e.status=r.status;throw e}
+  return d
+}
 async function login(){try{let d=await fetch(API+"/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("username").value,password:$("password").value})}).then(r=>r.json());if(!d.token)throw Error(d.error||"Login failed");token=d.token;localStorage.setItem("crm_token",token);$("login").classList.add("hidden");$("app").classList.remove("hidden");refresh()}catch(e){$("msg").textContent=e.message}}
-function logout(){localStorage.removeItem("crm_token");location.reload()}
+function logout(){
+  // Logout only ends the session. It NEVER deletes leads or other CRM data.
+  token="";
+  localStorage.removeItem("crm_token");
+  location.reload();
+}
 function menuNotice(name){alert(name+" page is ready in the left menu. Functionality can be added next.")}
 function go(id,btn){document.querySelectorAll(".nav-item").forEach(x=>x.classList.remove("active"));if(btn)btn.classList.add("active");if(id==='dashboard'){$("dashboard").scrollIntoView({behavior:'smooth'});$("leadCreate").classList.add("hidden");$("leads").classList.add("hidden");$("payout").classList.add("hidden");return}$("leadCreate").classList.add("hidden");$("leads").classList.add("hidden");$("payout").classList.add("hidden");$(id).classList.remove("hidden");$(id).scrollIntoView({behavior:'smooth'})}
 async function refresh(){let d=await api("/dashboard");$("total").textContent=d.total;$("newCount").textContent=d.counts.New||0;$("loginCount").textContent=d.counts.Login||0;$("sanctionCount").textContent=d.counts.Sanction||0;$("disbCount").textContent=d.counts.Disbursed||0;$("rejectedCount").textContent=d.counts.Rejected||0;$("disbAmt").textContent=money(d.disbursement);$("payout").textContent=money(d.payout);$("paySummary").textContent=money(d.payout);$("monthLeads").textContent=d.total;$("monthDisb").textContent=money(d.disbursement);$("monthPayout").textContent=money(d.payout);$("pendingSummary").textContent=money(d.pending);$("monthPending").textContent=money(d.pending);$("legNew").textContent=d.counts.New||0;$("legLogin").textContent=d.counts.Login||0;$("legSanction").textContent=d.counts.Sanction||0;$("legDisb").textContent=d.counts.Disbursed||0;$("legReject").textContent=d.counts.Rejected||0;loadLeads()}
@@ -51,5 +62,18 @@ function fillPay(){let id=$("plead").value;if(!id)return;api("/leads?status=Disb
 function calc(){$("pnet").value=(Number($("pamount").value||0)*Number($("ppercent").value||0)/100).toFixed(2)}
 async function savePayment(){if(!$("plead").value)return alert("Select a lead");await api("/payments",{method:"POST",body:JSON.stringify({lead_id:$("plead").value,connector:$("pconnector").value,payout_percent:Number($("ppercent").value||0),payment_date:$("pdate").value,payment_mode:$("pmode").value,utr:$("putr").value,payment_status:$("pstatus").value})});alert("Payment saved");refresh()}
 function safe(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
-if(token){$("login").classList.add("hidden");$("app").classList.remove("hidden");refresh().catch(()=>logout())}
+if(token){
+  $("login").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  refresh().catch(e=>{
+    if(e.status===401){
+      localStorage.removeItem("crm_token"); token="";
+      $("app").classList.add("hidden"); $("login").classList.remove("hidden");
+      $("msg").textContent="Session expired. Please login again.";
+    }else{
+      console.error("CRM data load failed:",e);
+      $("msg").textContent="Database/data load error. Leads were not deleted.";
+    }
+  });
+}
 </script></body></html>

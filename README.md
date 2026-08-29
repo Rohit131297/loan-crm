@@ -33,3 +33,11 @@ The database file `loancrm.sqlite` is created automatically.
 
 ## Production
 Deploy the Node server on a hosting service and use a managed database for production scale. Do not expose the SQLite file publicly. Set a strong JWT_SECRET and use HTTPS.
+
+
+## IMPORTANT: Persistent Leads
+Leads are stored in PostgreSQL using the `DATABASE_URL` environment variable.
+For Render + Supabase, set `DATABASE_URL` to the Supabase PostgreSQL connection string.
+Do NOT use SQLite or an in-memory/local browser store for production.
+Logout only removes the JWT session token; it does not delete leads.
+The frontend also no longer logs the user out automatically on temporary database/network errors.
