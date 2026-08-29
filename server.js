@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import fs from "fs";
+import path from "path";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -13,7 +14,13 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 app.use(express.json({limit:"1mb"}));
 app.use(express.static("public"));
 
-const db = new Database("loancrm.sqlite");
+// Render's normal filesystem is ephemeral. Set DB_PATH=/data/loancrm.sqlite
+// and mount a persistent Render disk at /data so leads survive restarts/redeploys.
+// Local development continues to use ./loancrm.sqlite when DB_PATH is not set.
+const DB_PATH = process.env.DB_PATH || path.resolve("loancrm.sqlite");
+const dbDir = path.dirname(DB_PATH);
+if (dbDir && dbDir !== ".") fs.mkdirSync(dbDir, {recursive:true});
+const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -65,6 +72,7 @@ CREATE TABLE IF NOT EXISTS payments (
 `);
 
 const allowedStatuses = ["New","Login","Sanction","Disbursed","Rejected"];
+function now(){ return new Date().toISOString(); }
 function safeEqual(value, expected) {
   const valueBuffer = Buffer.from(value);
   const expectedBuffer = Buffer.from(expected);
@@ -159,4 +167,4 @@ app.post("/api/payments",auth,(req,res)=>{
   res.json(db.prepare("SELECT * FROM payments WHERE id=?").get(id));
 });
 
-app.listen(PORT,()=>console.log(`Loan CRM v4 running at http://localhost:${PORT}`));
+app.listen(PORT,()=>console.log(`Loan CRM v4 running at http://localhost:${PORT} using database ${DB_PATH}`));
