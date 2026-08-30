@@ -18,7 +18,15 @@ const pool = new Pool({
 });
 
 app.use(express.json({limit:"1mb"}));
-app.use(express.static("public"));
+
+// IMPORTANT: Render serves public/ by default, but the persistent CRM frontend
+// is the root index.html. Serve that exact frontend so an old public/index.html
+// can never make the CRM appear to lose data.
+app.get("/", (req,res)=>{
+  res.set("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.sendFile(process.cwd()+"/index.html");
+});
+app.use(express.static("public", {etag:true}));
 
 const allowedStatuses=["New","Login","Sanction","Disbursed","Rejected"];
 function safeEqual(value,expected){const a=Buffer.from(String(value)),b=Buffer.from(String(expected));return a.length===b.length&&crypto.timingSafeEqual(a,b);}
@@ -77,4 +85,4 @@ app.get("/api/payments",auth,async(req,res)=>{try{res.json((await pool.query(`SE
 app.post("/api/payments",auth,async(req,res)=>{try{const b=req.body;const l=(await pool.query("SELECT * FROM leads WHERE id=$1",[String(b.lead_id||"")])).rows[0];if(!l)return res.status(400).json({error:"Lead not found"});if(l.status!=="Disbursed")return res.status(400).json({error:"Only Disbursed leads can be paid"});const percent=Number(b.payout_percent||0),net=Number((Number(l.disb)*percent/100).toFixed(2)),id=crypto.randomUUID();const r=await pool.query(`INSERT INTO payments(id,lead_id,connector,payout_percent,net_payout,payment_date,payment_mode,utr,payment_status,remark) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,[id,l.id,String(b.connector||l.connector||""),percent,net,String(b.payment_date||""),String(b.payment_mode||"Bank Transfer"),String(b.utr||""),b.payment_status==="Paid"?"Paid":"Pending",String(b.remark||"")]);res.json(r.rows[0]);}catch(e){console.error(e);res.status(500).json({error:"Could not save payment"});}});
 app.get("/health",async(req,res)=>{try{await pool.query("SELECT 1");res.json({ok:true,database:"postgresql"});}catch{res.status(503).json({ok:false});}});
 
-initDb().then(()=>app.listen(PORT,()=>console.log(`Loan CRM v4.1 running on port ${PORT}`))).catch(e=>{console.error("Database initialization failed:",e);process.exit(1);});
+initDb().then(()=>app.listen(PORT,()=>console.log(`Loan CRM v4.2 persistent frontend running on port ${PORT}`))).catch(e=>{console.error("Database initialization failed:",e);process.exit(1);});
